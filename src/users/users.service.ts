@@ -17,15 +17,36 @@ export class UsersService {
     return this.userModel.find();
   }
 
+ 
+
+
   async findByEmail(email:string){
     const findUserByEmail = await this.userModel.findOne({email:email}).select("+password");
     return findUserByEmail;
   }
 
+  // async findOne(id: string) {
+  //   const findUserById = await this.userModel.findById(id).populate('images');
+  //   return findUserById;
+  // }
+
   async findOne(id: string) {
-    const findUserById = await this.userModel.findById(id)
-    return findUserById;
-  }
+    const user = await this.userModel.findById(id).populate('images');
+    
+    if (!user) {
+        return null;
+    }
+    
+    const userObject = user.toObject();
+    
+    const storageInMB = (userObject.totalStorageUsed / (1024 * 1024)).toFixed(2);
+
+    return {
+        ...userObject,
+        totalStorageUsedMB: `${storageInMB} MB`,
+        imageCount: userObject.images?.length || 0
+    };
+}
 
   async update(id:  string, updateUserDto: UpdateUserDto) {
     const updatedUser = await this.userModel.findByIdAndUpdate(id, updateUserDto,{new:true})

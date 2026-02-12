@@ -46,7 +46,12 @@ export class ImagesController {
 
         return this.imagesService.uploadImage(req.userId, file);
     }
-
+     
+    @Get('all') 
+    async getAllImagesPublic(@Query() listDto: ListImagesDto) {
+        // აქ აღარ გადავცემთ req.userId-ს
+        return this.imagesService.listImagesPublic(listDto);
+    }
     @Post(':id/transform')
     async transformImage(
         @Param('id') id: string,

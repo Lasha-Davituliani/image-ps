@@ -5,12 +5,14 @@ import sharp from 'sharp';
 import { AwsService } from 'src/aws/aws.service';
 import { Image } from './schema/image.schema';
 import { TransformImageDto, ListImagesDto } from './dto/image.dto';
+import { User } from 'src/users/schema/user.schema';
 
 @Injectable()
 export class ImagesService {
     constructor(
         private awsService: AwsService,
-        @InjectModel('image') private imageModel: Model<Image>
+        @InjectModel('image') private imageModel: Model<Image>,
+        @InjectModel('user') private userModel: Model<User>,
     ) {}
 
     async uploadImage(userId: string, file: Express.Multer.File) {
@@ -34,8 +36,14 @@ export class ImagesService {
                 height: metadata.height,
             });
 
+            await this.userModel.findByIdAndUpdate(userId, {
+                $push: { images: image._id },
+                $inc: { totalStorageUsed: file.size },
+            });
+
             return {
                 id: image._id,
+                userId: image.userId,
                 fileName: image.fileName,
                 originalName: image.originalName,
                 size: image.size,
@@ -194,7 +202,7 @@ export class ImagesService {
             fileName: image.fileName,
             originalName: image.originalName,
             mimeType: image.mimeType,
-            size: image.size,
+            size: `${(image.size / 1024).toFixed(2)} KB`,
             width: image.width,
             height: image.height,
             url: signedUrl,
@@ -202,7 +210,50 @@ export class ImagesService {
             updatedAt: image['updatedAt'],
         };
     }
+    
+    async listImagesPublic(listDto: ListImagesDto) {
+    const { limit = 10, page = 1, sortBy = 'createdAt', sortOrder = 'desc' } = listDto;
+    const skip = (page - 1) * limit;
 
+    const sortOptions: any = {};
+    sortOptions[sortBy] = sortOrder === 'asc' ? 1 : -1;
+    
+    const query = {}; 
+
+    const [images, total] = await Promise.all([
+        this.imageModel
+            .find(query)
+            .sort(sortOptions)
+            .skip(skip)
+            .limit(limit)
+            .lean(),
+        this.imageModel.countDocuments(query),
+    ]);
+
+    const totalPages = Math.ceil(total / limit);
+
+    return {
+        data: images.map(img => ({
+            id: img._id,
+            userId: img.userId, 
+            fileName: img.fileName,
+            originalName: img.originalName,
+            mimeType: img.mimeType,
+            size: `${(img.size / 1024).toFixed(2)} KB`, 
+            width: img.width,
+            height: img.height,
+            createdAt: img['createdAt'],
+        })),
+        pagination: {
+            total,
+            page,
+            limit,
+            totalPages,
+            hasNextPage: page < totalPages,
+            hasPrevPage: page > 1,
+        },
+    };
+}
     async listImages(userId: string, listDto: ListImagesDto) {
         const { limit = 10, page = 1, sortBy = 'createdAt', sortOrder = 'desc' } = listDto;
         const skip = (page - 1) * limit;
@@ -220,7 +271,7 @@ export class ImagesService {
             this.imageModel.countDocuments({ userId: new Types.ObjectId(userId) }),
         ]);
 
-        const totalPages = Math.ceil(total / limit);
+        const totalPages = Math.ceil(total / limit);        
 
         return {
             data: images.map(img => ({
@@ -228,7 +279,7 @@ export class ImagesService {
                 fileName: img.fileName,
                 originalName: img.originalName,
                 mimeType: img.mimeType,
-                size: img.size,
+                size: `${(img.size / 1024).toFixed(2)} KB`,
                 width: img.width,
                 height: img.height,
                 createdAt: img['createdAt'],
@@ -245,7 +296,7 @@ export class ImagesService {
     }
 
     async deleteImage(userId: string, imageId: string) {
-        const image = await this.imageModel.findOneAndDelete({
+        const image = await this.imageModel.findOne({
             _id: imageId,
             userId: new Types.ObjectId(userId),
         });
@@ -254,6 +305,14 @@ export class ImagesService {
             throw new NotFoundException('Image not found');
         }
 
-        return { message: 'Image deleted successfully' };
+        await this.awsService.deleteFile(image.s3Key);
+        await this.imageModel.deleteOne({ _id: imageId });
+
+        await this.userModel.findByIdAndUpdate(userId, {
+            $pull: { images: imageId },
+            $inc: { totalStorageUsed: -image.size } 
+        });
+
+        return { message: 'Image and physical file deleted successfully' };
     }
 }

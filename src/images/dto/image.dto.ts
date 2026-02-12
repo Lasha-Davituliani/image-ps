@@ -1,3 +1,4 @@
+import { Type } from "class-transformer";
 import { IsEnum, IsInt, IsOptional, IsString, Max, Min } from "class-validator";
 
 export class UploadImageDto {
@@ -74,12 +75,14 @@ export class TransformImageDto {
 
 export class ListImagesDto {
     @IsOptional()
+    @Type(() => Number)
     @IsInt()
     @Min(1)
     @Max(100)
     limit?: number = 10;
 
     @IsOptional()
+    @Type(() => Number)
     @IsInt()
     @Min(1)
     page?: number = 1;

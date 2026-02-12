@@ -1,4 +1,4 @@
-import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { BadRequestException, Injectable } from '@nestjs/common';
 
@@ -53,6 +53,20 @@ export class AwsService {
             throw new BadRequestException('Image not found');
         }
     }
+
+async deleteFile(key: string) {
+    try {
+        const command = new DeleteObjectCommand({
+            Bucket: this.bucketName,
+            Key: key,
+        });
+        const result = await this.s3.send(command);
+        return result;
+    } catch (error) {
+       
+        throw new BadRequestException(`Failed to delete file from S3: ${error.message}`);
+    }
+}
 
     async getSignedUrl(filePath: string, expiresIn: number = 3600): Promise<string> {
         const command = new GetObjectCommand({
